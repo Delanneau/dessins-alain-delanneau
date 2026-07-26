@@ -42,7 +42,7 @@
   canvas {
     display: block;
     max-height: 88vh;
-    max-width: 46vw;
+    max-width: 90vw;
   }
   .nav-btn {
     position: absolute;
@@ -94,7 +94,7 @@
 
 <div id="top-bar">
   <span>Fâché avec le genre humain — Alain Delanneau</span>
-  <span id="page-info">Pages 1–2</span>
+  <span id="page-info"></span>
 </div>
 
 <div id="viewer-wrap">
@@ -110,8 +110,9 @@
 <script>
 const url = 'presentation_dessin.pdf';
 let pdfDoc = null;
-let leftNum = 1;
 let pageCount = 0;
+let spreadIndex = 0;
+let spreads = []; // tableau de tableaux : [1],[2],[3],[4,5],[6,7]...,[60]
 let rendering = false;
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -125,6 +126,30 @@ const pageInfo = document.getElementById('page-info');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 
+function buildSpreads(total) {
+  // Pages 1, 2, 3 : introduction, chacune seule
+  // Pages 4 à (total-2) : par paires image+texte
+  // Dernière page : seule (page de crédits)
+  const arr = [];
+  const introEnd = 3;
+  for (let i = 1; i <= introEnd && i <= total; i++) {
+    arr.push([i]);
+  }
+  let p = introEnd + 1;
+  const lastContentPage = total; // dernière page = crédits, seule
+  while (p < lastContentPage) {
+    if (p + 1 < lastContentPage) {
+      arr.push([p, p + 1]);
+      p += 2;
+    } else {
+      arr.push([p]);
+      p += 1;
+    }
+  }
+  if (p <= total) arr.push([p]);
+  return arr;
+}
+
 function renderOnCanvas(pageObj, canvas, ctx, maxWidth, maxHeight) {
   const baseViewport = pageObj.getViewport({ scale: 1 });
   const scale = Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height);
@@ -134,19 +159,20 @@ function renderOnCanvas(pageObj, canvas, ctx, maxWidth, maxHeight) {
   return pageObj.render({ canvasContext: ctx, viewport: viewport }).promise;
 }
 
-function renderSpread(left) {
+function renderSpread(idx) {
   rendering = true;
-  const right = left + 1;
-  const maxW = window.innerWidth * 0.44;
+  const pages = spreads[idx];
+  const isDouble = pages.length === 2;
+  const maxW = window.innerWidth * (isDouble ? 0.44 : 0.85);
   const maxH = window.innerHeight * 0.85;
 
   const tasks = [];
 
-  tasks.push(pdfDoc.getPage(left).then(p => renderOnCanvas(p, canvasLeft, ctxLeft, maxW, maxH)));
+  tasks.push(pdfDoc.getPage(pages[0]).then(p => renderOnCanvas(p, canvasLeft, ctxLeft, maxW, maxH)));
   canvasLeft.style.display = 'block';
 
-  if (right <= pageCount) {
-    tasks.push(pdfDoc.getPage(right).then(p => renderOnCanvas(p, canvasRight, ctxRight, maxW, maxH)));
+  if (isDouble) {
+    tasks.push(pdfDoc.getPage(pages[1]).then(p => renderOnCanvas(p, canvasRight, ctxRight, maxW, maxH)));
     canvasRight.style.display = 'block';
   } else {
     canvasRight.style.display = 'none';
@@ -157,20 +183,22 @@ function renderSpread(left) {
     loading.style.display = 'none';
   });
 
-  pageInfo.textContent = (right <= pageCount) ? ('Pages ' + left + '–' + right + ' / ' + pageCount) : ('Page ' + left + ' / ' + pageCount);
-  prevBtn.disabled = (left <= 1);
-  nextBtn.disabled = (right >= pageCount);
+  pageInfo.textContent = isDouble
+    ? ('Pages ' + pages[0] + '–' + pages[1] + ' / ' + pageCount)
+    : ('Page ' + pages[0] + ' / ' + pageCount);
+  prevBtn.disabled = (idx <= 0);
+  nextBtn.disabled = (idx >= spreads.length - 1);
 }
 
 function goPrev() {
-  if (leftNum <= 1 || rendering) return;
-  leftNum = Math.max(1, leftNum - 2);
-  renderSpread(leftNum);
+  if (spreadIndex <= 0 || rendering) return;
+  spreadIndex--;
+  renderSpread(spreadIndex);
 }
 function goNext() {
-  if (leftNum + 1 >= pageCount || rendering) return;
-  leftNum = leftNum + 2;
-  renderSpread(leftNum);
+  if (spreadIndex >= spreads.length - 1 || rendering) return;
+  spreadIndex++;
+  renderSpread(spreadIndex);
 }
 
 prevBtn.addEventListener('click', goPrev);
@@ -183,7 +211,8 @@ document.addEventListener('keydown', function(e) {
 pdfjsLib.getDocument(url).promise.then(function(doc) {
   pdfDoc = doc;
   pageCount = doc.numPages;
-  renderSpread(leftNum);
+  spreads = buildSpreads(pageCount);
+  renderSpread(spreadIndex);
 }).catch(function(err) {
   loading.textContent = 'Erreur de chargement du PDF : ' + err.message;
 });
