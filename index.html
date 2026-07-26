@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Fâché avec le genre humain — Alain Delanneau</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #111;
+    color: #eee;
+    font-family: Georgia, 'Times New Roman', serif;
+    overflow: hidden;
+  }
+  #viewer-wrap {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #spread {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-width: 94vw;
+    max-height: 88vh;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  }
+  .page-box {
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 88vh;
+  }
+  canvas {
+    display: block;
+    max-height: 88vh;
+    max-width: 46vw;
+  }
+  .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #eee;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    font-size: 22px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    z-index: 10;
+  }
+  .nav-btn:hover { background: rgba(255,255,255,0.2); }
+  .nav-btn:disabled { opacity: 0.25; cursor: default; }
+  #prev-btn { left: 18px; }
+  #next-btn { right: 18px; }
+  #top-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(rgba(0,0,0,0.6), transparent);
+    z-index: 20;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+  }
+  #page-info {
+    background: rgba(0,0,0,0.4);
+    padding: 6px 14px;
+    border-radius: 20px;
+  }
+  #loading {
+    position: absolute;
+    color: #888;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <span>Fâché avec le genre humain — Alain Delanneau</span>
+  <span id="page-info">Pages 1–2</span>
+</div>
+
+<div id="viewer-wrap">
+  <button id="prev-btn" class="nav-btn">‹</button>
+  <div id="spread">
+    <div id="loading">Chargement…</div>
+    <div class="page-box"><canvas id="canvas-left" style="display:none;"></canvas></div>
+    <div class="page-box"><canvas id="canvas-right" style="display:none;"></canvas></div>
+  </div>
+  <button id="next-btn" class="nav-btn">›</button>
+</div>
+
+<script>
+const url = 'présentation_dessin.pdf';
+let pdfDoc = null;
+let leftNum = 1;
+let pageCount = 0;
+let rendering = false;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const canvasLeft = document.getElementById('canvas-left');
+const canvasRight = document.getElementById('canvas-right');
+const ctxLeft = canvasLeft.getContext('2d');
+const ctxRight = canvasRight.getContext('2d');
+const loading = document.getElementById('loading');
+const pageInfo = document.getElementById('page-info');
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
+
+function renderOnCanvas(pageObj, canvas, ctx, maxWidth, maxHeight) {
+  const baseViewport = pageObj.getViewport({ scale: 1 });
+  const scale = Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height);
+  const viewport = pageObj.getViewport({ scale: scale });
+  canvas.height = viewport.height;
+  canvas.width = viewport.width;
+  return pageObj.render({ canvasContext: ctx, viewport: viewport }).promise;
+}
+
+function renderSpread(left) {
+  rendering = true;
+  const right = left + 1;
+  const maxW = window.innerWidth * 0.44;
+  const maxH = window.innerHeight * 0.85;
+
+  const tasks = [];
+
+  tasks.push(pdfDoc.getPage(left).then(p => renderOnCanvas(p, canvasLeft, ctxLeft, maxW, maxH)));
+  canvasLeft.style.display = 'block';
+
+  if (right <= pageCount) {
+    tasks.push(pdfDoc.getPage(right).then(p => renderOnCanvas(p, canvasRight, ctxRight, maxW, maxH)));
+    canvasRight.style.display = 'block';
+  } else {
+    canvasRight.style.display = 'none';
+  }
+
+  Promise.all(tasks).then(function() {
+    rendering = false;
+    loading.style.display = 'none';
+  });
+
+  pageInfo.textContent = (right <= pageCount) ? ('Pages ' + left + '–' + right + ' / ' + pageCount) : ('Page ' + left + ' / ' + pageCount);
+  prevBtn.disabled = (left <= 1);
+  nextBtn.disabled = (right >= pageCount);
+}
+
+function goPrev() {
+  if (leftNum <= 1 || rendering) return;
+  leftNum = Math.max(1, leftNum - 2);
+  renderSpread(leftNum);
+}
+function goNext() {
+  if (leftNum + 1 >= pageCount || rendering) return;
+  leftNum = leftNum + 2;
+  renderSpread(leftNum);
+}
+
+prevBtn.addEventListener('click', goPrev);
+nextBtn.addEventListener('click', goNext);
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowLeft') goPrev();
+  if (e.key === 'ArrowRight') goNext();
+});
+
+pdfjsLib.getDocument(url).promise.then(function(doc) {
+  pdfDoc = doc;
+  pageCount = doc.numPages;
+  renderSpread(leftNum);
+}).catch(function(err) {
+  loading.textContent = 'Erreur de chargement du PDF : ' + err.message;
+});
+</script>
+
+</body>
+</html>
