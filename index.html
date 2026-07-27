@@ -127,15 +127,12 @@ const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 
 function buildSpreads(total) {
-  // Pages 1, 2, 3 : introduction, chacune seule
-  // Pages 4 à (total-2) : par paires image+texte
+  // Page 1 : couverture, seule
+  // Pages 2 à (total-1) : par paires (2-3, 4-5, etc.)
   // Dernière page : seule (page de crédits)
   const arr = [];
-  const introEnd = 3;
-  for (let i = 1; i <= introEnd && i <= total; i++) {
-    arr.push([i]);
-  }
-  let p = introEnd + 1;
+  if (total >= 1) arr.push([1]);
+  let p = 2;
   const lastContentPage = total; // dernière page = crédits, seule
   while (p < lastContentPage) {
     if (p + 1 < lastContentPage) {
